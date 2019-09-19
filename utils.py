@@ -74,17 +74,37 @@ def get_param_stats(list_of_params, param_name, buckets=50, take_abs=False):
     final_stats = [np.percentile(final_data.cpu().numpy(), bins[i]) for i in range(len(bins))]
     return param_stats, final_stats
 
+def l2_norm(data):
+    """
+        l2 norm 
+    """
+    return (data**2).sum().item()
 
-#def get_grad_norm(list_of_params, paran_name)
+def l1_norm(data):
+    """ 
+        l1 norm 
+    """
+    return torch.abs(data).sum().item()
 
+def get_grad_norm(list_of_params, param_name):
+    param_stats = {}
+    for i, data in enumerate(list_of_params):
+        l2 = l2_norm(data.grad)
+        l1 = l1_norm(data.grad)
+        param_stats[param_name[i]] = [l2,l1]
+    return param_stats 
 
-def log_stats(param_stats, bin_counts, epoch, iteration, dir, param_file="PerParamStats.log", bin_counts_file="OverallStats.log"):
+def log_stats(param_stats, bin_counts, grad_norm, epoch, iteration, dir, param_file="PerParamStats.log", bin_counts_file="OverallStats.log", grad_norm_file="GradNormStats.log"):
     with open(dir+"/"+param_file, "a") as writer:
         for param, val in param_stats.items():
             writer.write(str(epoch) + "," + str(iteration) + "," + param + "," + ",".join([str(x) for x in val])+"\n")
     
     with open(dir+"/"+bin_counts_file, "a") as writer:
-        writer.write(str(epoch) + "," + str(iteration) + "," + param + "," + ",".join([str(x) for x in bin_counts])+"\n")
+        writer.write(str(epoch) + "," + str(iteration) + "," + ",".join([str(x) for x in bin_counts])+"\n")
+
+    with open(dir+"/"+grad_norm_file, "a") as writer:
+        for param, val in grad_norm.items():
+            writer.write(str(epoch) + "," + str(iteration) + "," + param + "," + str(val[0]) + "," + str(val[1]) +"\n")
 
 def get_mean_and_std(dataset):
     '''Compute the mean and std value of dataset.'''

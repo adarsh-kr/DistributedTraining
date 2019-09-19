@@ -12,7 +12,7 @@ import os, random
 import argparse
 
 from models import *
-from utils import progress_bar, get_gradient_stats, get_param_stats, log_stats
+from utils import progress_bar, get_gradient_stats, get_param_stats, log_stats, get_grad_norm
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
@@ -110,9 +110,11 @@ def train(epoch):
         if batch_idx%10==0:
             # conv params
             param_stats, bin_counts = get_param_stats(conv_params, conv_param_names)
-            log_stats(param_stats, bin_counts, dir="GradientStatsPercentile_Abs", epoch=epoch, iteration=batch_idx)
+            grad_norm_stats = get_grad_norm(conv_params, conv_param_names)
+            log_stats(param_stats, bin_counts,grad_norm_stats, dir="GradientStatsPercentile_Abs_Norm", epoch=epoch, iteration=batch_idx)
             param_stats, bin_counts = get_param_stats(conv_params, conv_param_names, take_abs=True)
-            log_stats(param_stats, bin_counts, dir="GradientStatsPercentile_Abs", epoch=epoch, iteration=batch_idx, param_file="PerParamStatsAbs.log", bin_counts_file="OverallStatsAbs.log") 
+            grad_norm_stats = get_grad_norm(conv_params, conv_param_names)
+            log_stats(param_stats, bin_counts, grad_norm_stats, dir="GradientStatsPercentile_Abs_Norm", epoch=epoch, iteration=batch_idx, param_file="PerParamStatsAbs.log", bin_counts_file="OverallStatsAbs.log", grad_norm_file="GradNormStatsAbs.log") 
         
         optimizer.step()
         train_loss += loss.item()
