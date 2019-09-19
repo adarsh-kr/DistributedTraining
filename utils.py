@@ -1,0 +1,187 @@
+'''Some helper functions for PyTorch, including:
+    - get_mean_and_std: calculate the mean and std value of dataset.
+    - msr_init: net parameter initialization.
+    - progress_bar: progress bar mimic xlua.progress.
+'''
+import torch
+import os
+import sys
+import time
+import math
+from pathlib import Path
+import numpy as np
+import torch.nn as nn
+import torch.nn.init as init
+import matplotlib.pyplot as pl
+
+if torch.cuda.is_available():
+    USE_CUDA = True
+else:
+    USE_CUDA = False
+
+
+
+def get_gradient_stats(model, epoch, iteration):
+    layer_param = {}
+    dir = Path("GradientStats") / Path(str(epoch)) / Path(str(iteration))
+    if not os.path.exists(dir.as_posix()):
+        os.makedirs(dir.as_posix())
+
+    log_file = Path("GradientStats") / Path("gradientStats.log")
+        # log the mean, variance, max and min
+    f = open(log_file.as_posix(), "a")
+
+
+    for name, param in model.named_parameters():
+        if USE_CUDA:
+            layer_param[name] = param.grad.view(-1).cpu().numpy() 
+            fig = pl.hist(param.grad.view(-1).cpu().numpy())
+        else:
+            layer_param[name] = param.grad.view(-1).numpy() 
+            fig = pl.hist(param.grad.view(-1).numpy())
+
+        pl.title('Histogram')
+        pl.xlabel("Value")
+        pl.ylabel("Frequency")
+        pl.savefig((dir / Path(name.replace(".",  "_") + ".png")).as_posix())
+        pl.clf()
+        f.write(str(epoch) + "," + str(iteration) + "," + name + ',' + str(np.mean(layer_param[name])) + ',' + str(np.var(layer_param[name])) + ',' + str(np.max(layer_param[name])) + ',' + str(np.min(layer_param[name])) +"\n")
+    f.close()
+    return layer_param
+
+def get_param_stats(list_of_params, param_name, buckets=50):
+    """
+        list_of_params: expects a list of parameters,
+        param_name: names of parameters
+        buckets: number of buckets to split the data into 
+    """ 
+    bins = list(range(0, 100, 10))
+    bin_counts = [0]*len(bins)
+    final_data = torch.tensor([])
+    param_stats = {}
+    for i,data in enumerate(list_of_params):
+        final_data = torch.cat([final_data, data.grad.view(-1)])    
+        param_stats[param_name[i]] = [np.percentile(data.grad.cpu().numpy(), bins[i]) for i in range(len(bins))]
+
+    final_stats = [np.percentile(final_data.cpu().numpy(), bins[i]) for i in range(len(bins))]
+    return param_stats, final_stats
+
+
+def log_stats(param_stats, bin_counts, epoch, iteration, dir, param_file="PerParamStats.log", bin_counts_file="OverallStats.log"):
+    with open(dir+"/"+param_file, "a") as writer:
+        for param, val in param_stats.items():
+            writer.write(str(epoch) + "   " + str(iteration) + "  " + param + "   " + "   ".join([str(x) for x in val])+"\n")
+    
+    with open(dir+"/"+bin_counts_file, "a") as writer:
+        writer.write(str(epoch) + "   " + str(iteration) + "  " + param + "   " + "   ".join([str(x) for x in bin_counts])+"\n")
+
+def get_mean_and_std(dataset):
+    '''Compute the mean and std value of dataset.'''
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=2)
+    mean = torch.zeros(3)
+    std = torch.zeros(3)
+    print('==> Computing mean and std..')
+    for inputs, targets in dataloader:
+        for i in range(3):
+            mean[i] += inputs[:,i,:,:].mean()
+            std[i] += inputs[:,i,:,:].std()
+    mean.div_(len(dataset))
+    std.div_(len(dataset))
+    return mean, std
+
+def init_params(net):
+    '''Init layer parameters.'''
+    for m in net.modules():
+        if isinstance(m, nn.Conv2d):
+            init.kaiming_normal(m.weight, mode='fan_out')
+            if m.bias:
+                init.constant(m.bias, 0)
+        elif isinstance(m, nn.BatchNorm2d):
+            init.constant(m.weight, 1)
+            init.constant(m.bias, 0)
+        elif isinstance(m, nn.Linear):
+            init.normal(m.weight, std=1e-3)
+            if m.bias:
+                init.constant(m.bias, 0)
+
+
+_, term_width = os.popen('stty size', 'r').read().split()
+term_width = int(term_width)
+
+TOTAL_BAR_LENGTH = 65.
+last_time = time.time()
+begin_time = last_time
+def progress_bar(current, total, msg=None):
+    global last_time, begin_time
+    if current == 0:
+        begin_time = time.time()  # Reset for new bar.
+
+    cur_len = int(TOTAL_BAR_LENGTH*current/total)
+    rest_len = int(TOTAL_BAR_LENGTH - cur_len) - 1
+
+    sys.stdout.write(' [')
+    for i in range(cur_len):
+        sys.stdout.write('=')
+    sys.stdout.write('>')
+    for i in range(rest_len):
+        sys.stdout.write('.')
+    sys.stdout.write(']')
+
+    cur_time = time.time()
+    step_time = cur_time - last_time
+    last_time = cur_time
+    tot_time = cur_time - begin_time
+
+    L = []
+    L.append('  Step: %s' % format_time(step_time))
+    L.append(' | Tot: %s' % format_time(tot_time))
+    if msg:
+        L.append(' | ' + msg)
+
+    msg = ''.join(L)
+    sys.stdout.write(msg)
+    for i in range(term_width-int(TOTAL_BAR_LENGTH)-len(msg)-3):
+        sys.stdout.write(' ')
+
+    # Go back to the center of the bar.
+    for i in range(term_width-int(TOTAL_BAR_LENGTH/2)+2):
+        sys.stdout.write('\b')
+    sys.stdout.write(' %d/%d ' % (current+1, total))
+
+    if current < total-1:
+        sys.stdout.write('\r')
+    else:
+        sys.stdout.write('\n')
+    sys.stdout.flush()
+
+def format_time(seconds):
+    days = int(seconds / 3600/24)
+    seconds = seconds - days*3600*24
+    hours = int(seconds / 3600)
+    seconds = seconds - hours*3600
+    minutes = int(seconds / 60)
+    seconds = seconds - minutes*60
+    secondsf = int(seconds)
+    seconds = seconds - secondsf
+    millis = int(seconds*1000)
+
+    f = ''
+    i = 1
+    if days > 0:
+        f += str(days) + 'D'
+        i += 1
+    if hours > 0 and i <= 2:
+        f += str(hours) + 'h'
+        i += 1
+    if minutes > 0 and i <= 2:
+        f += str(minutes) + 'm'
+        i += 1
+    if secondsf > 0 and i <= 2:
+        f += str(secondsf) + 's'
+        i += 1
+    if millis > 0 and i <= 2:
+        f += str(millis) + 'ms'
+        i += 1
+    if f == '':
+        f = '0ms'
+    return f
