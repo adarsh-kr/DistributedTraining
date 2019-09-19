@@ -110,7 +110,9 @@ def train(epoch):
         if batch_idx%10==0:
             # conv params
             param_stats, bin_counts = get_param_stats(conv_params, conv_param_names)
-            log_stats(param_stats, bin_counts, dir="GradientStatsPercentile", epoch=epoch, iteration=batch_idx)
+            log_stats(param_stats, bin_counts, dir="GradientStatsPercentile_Abs", epoch=epoch, iteration=batch_idx)
+            param_stats, bin_counts = get_param_stats(conv_params, conv_param_names, take_abs=True)
+            log_stats(param_stats, bin_counts, dir="GradientStatsPercentile_Abs", epoch=epoch, iteration=batch_idx, param_file="PerParamStatsAbs.log", bin_counts_file="OverallStatsAbs.log") 
         
         optimizer.step()
         train_loss += loss.item()

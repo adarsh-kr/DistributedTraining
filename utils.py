@@ -19,7 +19,9 @@ if torch.cuda.is_available():
 else:
     USE_CUDA = False
 
-
+def get_grad_norm_stats(model, epoch, iteration):
+    
+    print("asda asfaf")
 
 def get_gradient_stats(model, epoch, iteration):
     layer_param = {}
@@ -49,7 +51,7 @@ def get_gradient_stats(model, epoch, iteration):
     f.close()
     return layer_param
 
-def get_param_stats(list_of_params, param_name, buckets=50):
+def get_param_stats(list_of_params, param_name, buckets=50, take_abs=False):
     """
         list_of_params: expects a list of parameters,
         param_name: names of parameters
@@ -58,22 +60,31 @@ def get_param_stats(list_of_params, param_name, buckets=50):
     bins = list(range(0, 100, 10))
     bin_counts = [0]*len(bins)
     final_data = torch.tensor([])
+    if USE_CUDA:
+        final_data = final_data.cuda()
     param_stats = {}
     for i,data in enumerate(list_of_params):
-        final_data = torch.cat([final_data, data.grad.view(-1)])    
-        param_stats[param_name[i]] = [np.percentile(data.grad.cpu().numpy(), bins[i]) for i in range(len(bins))]
+        if take_abs==False:
+            final_data = torch.cat([final_data, data.grad.view(-1)])    
+            param_stats[param_name[i]] = [np.percentile(data.grad.cpu().numpy(), bins[i]) for i in range(len(bins))]
+        else:
+            final_data = torch.cat([final_data, torch.abs(data.grad.view(-1))])
+            param_stats[param_name[i]] = [np.percentile(torch.abs(data.grad).cpu().numpy(), bins[i]) for i in range(len(bins))]
 
     final_stats = [np.percentile(final_data.cpu().numpy(), bins[i]) for i in range(len(bins))]
     return param_stats, final_stats
 
 
+#def get_grad_norm(list_of_params, paran_name)
+
+
 def log_stats(param_stats, bin_counts, epoch, iteration, dir, param_file="PerParamStats.log", bin_counts_file="OverallStats.log"):
     with open(dir+"/"+param_file, "a") as writer:
         for param, val in param_stats.items():
-            writer.write(str(epoch) + "   " + str(iteration) + "  " + param + "   " + "   ".join([str(x) for x in val])+"\n")
+            writer.write(str(epoch) + "," + str(iteration) + "," + param + "," + ",".join([str(x) for x in val])+"\n")
     
     with open(dir+"/"+bin_counts_file, "a") as writer:
-        writer.write(str(epoch) + "   " + str(iteration) + "  " + param + "   " + "   ".join([str(x) for x in bin_counts])+"\n")
+        writer.write(str(epoch) + "," + str(iteration) + "," + param + "," + ",".join([str(x) for x in bin_counts])+"\n")
 
 def get_mean_and_std(dataset):
     '''Compute the mean and std value of dataset.'''
