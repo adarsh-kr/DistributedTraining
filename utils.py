@@ -78,7 +78,7 @@ def l2_norm(data):
     """
         l2 norm 
     """
-    return (data**2).sum().item()
+    return ((data**2).sum().item())**(0.5)
 
 def l1_norm(data):
     """ 
